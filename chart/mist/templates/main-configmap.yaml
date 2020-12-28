@@ -50,6 +50,7 @@ data:
       {{- end }}
     }
 
+    TSFDB_URI = {{ if .Values.tsfdb.enableSubchart }} "http://{{ include "chart.fullname" . }}-tsfdb:8080" {{ else }} "" {{ end }}
     INFLUX = {
       {{- if .Values.influxdb.host }}
         'host': "http://{{ .Values.influxdb.host }}:{{ .Values.influxdb.port }}",
@@ -67,7 +68,7 @@ data:
 
     {{ if .Values.rabbitmq.enabled -}}
     AMQP_URI = "{{ .Release.Name }}-rabbitmq:5672"
-    BROKER_URL = "amqp://{{ .Values.rabbitmq.rabbitmqUsername }}:{{ .Values.rabbitmq.rabbitmqPassword }}@{{ .Release.Name }}-rabbitmq:5672/"
+    BROKER_URL = "amqp://{{ .Values.rabbitmq.auth.username }}:{{ .Values.rabbitmq.auth.password }}@{{ .Release.Name }}-rabbitmq:5672/"
     {{- else -}}
     AMQP_URI = "{{ .Values.rabbitmqExternal.host }}:{{ .Values.rabbitmqExternal.port }}"
     BROKER_URL = "amqp://{{ .Values.rabbitmqExternal.username }}:{{ .Values.rabbitmqExternal.password }}@{{ .Values.rabbitmqExternal.host }}:{{ .Values.rabbitmqExternal.port }}/"
