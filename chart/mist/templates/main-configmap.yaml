@@ -50,7 +50,19 @@ data:
       {{- end }}
     }
 
-    TSFDB_URI = {{ if .Values.tsfdb.enableSubchart }} "http://{{ include "chart.fullname" . }}-tsfdb:8080" {{ else }} "" {{ end }}
+    {{ if .Values.victoriametrics.enabled -}}
+    {{ if .Values.victoriametrics.deploy -}}
+    VICTORIAMETRICS_URI = "http://{{ .Release.Name }}-victoriametrics-vmselect.{{ .Release.Namespace }}.svc.cluster.local:8481/select/<org_id>/prometheus"
+    VICTORIAMETRICS_WRITE_URI = "http://{{ .Release.Name }}-victoriametrics-vminsert.{{ .Release.Namespace }}.svc.cluster.local:8480/insert/<org_id>/prometheus/api/v1/import/prometheus"
+    {{- else -}}
+    VICTORIAMETRICS_URI = "{{ .Values.victoriametrics.readEndpoint }}/select/<org_id>/prometheus"
+    VICTORIAMETRICS_WRITE_URI = "{{ .Values.victoriametrics.writeEndpoint }}/insert/<org_id>/prometheus/api/v1/import/prometheus"
+    {{- end }}
+    {{- else -}}
+    VICTORIAMETRICS_URI = ""
+    VICTORIAMETRICS_WRITE_URI = ""
+    {{- end }}
+
     INFLUX = {
       {{- if .Values.influxdb.host }}
         'host': "http://{{ .Values.influxdb.host }}:{{ .Values.influxdb.port }}",
@@ -66,12 +78,18 @@ data:
     STRIPE_SECRET_APIKEY = "{{ .Values.stripe.secretApiKey }}"
     STRIPE_PUBLIC_APIKEY = "{{ .Values.stripe.publicApiKey }}"
 
-    {{ if .Values.rabbitmq.enabled -}}
+    {{ if .Values.rabbitmq.deploy -}}
     AMQP_URI = "{{ .Release.Name }}-rabbitmq:5672"
     BROKER_URL = "amqp://{{ .Values.rabbitmq.auth.username }}:{{ .Values.rabbitmq.auth.password }}@{{ .Release.Name }}-rabbitmq:5672/"
     {{- else -}}
     AMQP_URI = "{{ .Values.rabbitmqExternal.host }}:{{ .Values.rabbitmqExternal.port }}"
     BROKER_URL = "amqp://{{ .Values.rabbitmqExternal.username }}:{{ .Values.rabbitmqExternal.password }}@{{ .Values.rabbitmqExternal.host }}:{{ .Values.rabbitmqExternal.port }}/"
+    {{- end }}
+
+    {{- if .Values.memcached.host }}
+    MEMCACHED_HOST = ["{{ .Values.memcached.host }}"]
+    {{- else }}
+    MEMCACHED_HOST = ["{{ .Release.Name }}-memcached:11211"]
     {{- end }}
 
     DOCKER_IP = "{{ .Values.docker.host }}"
@@ -88,10 +106,10 @@ data:
 
     DEFAULT_MONITORING_METHOD = "{{ .Values.monitoring.defaultMethod }}"
 
-  {{- if .Values.mongodb.host }}
-    MONGO_URI = "{{ .Values.mongodb.host }}{{ if .Values.mongodb.port }}:{{ .Values.mongodb.port }}{{ end }}"
-  {{- else }}
+  {{- if .Values.mongodb.deploy }}
     MONGO_URI = "{{ .Release.Name }}-mongodb:27017"
+  {{- else }}
+    MONGO_URI = "{{ .Values.mongodb.host }}{{ if .Values.mongodb.port }}:{{ .Values.mongodb.port }}{{ end }}"
   {{- end }}
 
     GITHUB_BOT_TOKEN = "{{ .Values.githubBotToken }}"
@@ -117,7 +135,7 @@ data:
     CUSTOMERIO_SITEID = "{{ .Values.customerio.siteId }}"
     CUSTOMERIO_APIKEY = "{{ .Values.customerio.apiKey }}"
     GOOGLE_ANALYTICS_ID = "{{ .Values.googleAnalyticsId }}"
-    OLARK_ID = "{{ .Values.olarkId }}"
+    CHATWOOT_TOKEN = "{{ .Values.chatwootToken }}"
     SENDGRID_EMAIL_NOTIFICATIONS_KEY = "{{ .Values.sendgridEmailNotificationsKey }}"
 
     INTERNAL_API_URL = "http://{{ include "chart.fullname" . }}-api"

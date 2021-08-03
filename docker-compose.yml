@@ -13,13 +13,12 @@ services:
       - mongodb:/data/db:rw
 
   rabbitmq:
-    image: rabbitmq:3.6.6-management
+    image: rabbitmq:3.8.16-management
     restart: on-failure:5
 
   memcached:
-    image: memcached
+    image: memcached:1.6.9
     restart: on-failure:5
-
 
   elasticsearch:
     image: elasticsearch:5.6.10
@@ -50,7 +49,6 @@ services:
     depends_on:
       - elasticsearch
 
-
   socat:
     image: mist/docker-socat
     restart: on-failure:5
@@ -68,10 +66,9 @@ services:
     restart: on-failure:5
 
 
-  celery-prefork: &backend
+  scheduler: &backend
     image: $IMG_REGISTRY/api:$IMG_TAG
     depends_on:
-      - memcached
       - mongodb
       - elasticsearch
       - rabbitmq
@@ -82,31 +79,7 @@ services:
     stdin_open: true
     tty: true
     restart: on-failure:5
-    command: bin/wait-all bin/celery-prefork
-
-  celery-gevent:
-    <<: *backend
-    command: bin/wait-all bin/celery-gevent
-
-  scheduler:
-    <<: *backend
     command: bin/wait-all bin/scheduler
-
-  poller:
-    <<: *backend
-    command: bin/wait-all bin/poller
-
-  cilia:
-    <<: *backend
-    command: bin/wait-all bin/cilia
-
-  beat:
-    <<: *backend
-    command: bin/wait-all bin/beat
-
-  hubshell:
-    <<: *backend
-    command: bin/wait-all bin/hubshell
 
   api:
     <<: *backend
@@ -152,7 +125,6 @@ services:
     expose:
       - 80
 
-
   nginx:
     image: $IMG_REGISTRY/nginx:$IMG_TAG
     restart: on-failure:5
@@ -164,9 +136,8 @@ services:
       - landing
       - ui
 
-
   influxdb:
-    image: influxdb
+    image: influxdb:1.8.4
     environment:
       INFLUXDB_DB: telegraf
       INFLUXDB_BIND_ADDRESS: "0.0.0.0:8088"
@@ -184,7 +155,6 @@ services:
       - 9097:9097
     depends_on:
       - rabbitmq
-
 
   traefik:
     image: traefik:v1.5
@@ -204,7 +174,7 @@ services:
       - 8041:8080
 
   huproxy:
-    image: mist/huproxy
+    image: $IMG_REGISTRY/huproxy:$IMG_TAG
     command: /app --listen 0.0.0.0:8086
     environment:
       MONGO_URI: mongodb://mongodb:27017
@@ -212,7 +182,7 @@ services:
       - 8086
 
   wsproxy:
-    image: mist/wsproxy
+    image: $IMG_REGISTRY/wsproxy:$IMG_TAG
     expose:
       - 8764
 
@@ -222,5 +192,4 @@ volumes:
   elasticsearch: {}
   influxdb: {}
   mongodb: {}
-  foundationdb: {}
-  fdbetc: {}
+  victoria-metrics: {}

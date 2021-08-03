@@ -1,14 +1,107 @@
 # Changelog
 
-## v4.4.0 ()
+## v4.5.5 (27 Jul 2021)
+
+ - Bugfix: Prevent loss of hosts when disabling KVM clouds
+ - Bugfix: Fix support of multiple locations & volume types on OpenStack clouds
+ - Bugfix: Fix network listing on OpenStack when IPv6 subnet exists
+ - Bugfix: Fix machine provisioning issue on OpenStack when attaching existing volume
+ - Bugfix: Update RBAC mappings for images & locations when cloud added by non-owner (EE/HS only)
+
+## v4.5.4 (15 Jun 2021)
+
+ - Bugfix: Fix clone action for vSphere machines
+ - Bugfix: Improve snapshot dialog for vSphere machines
+ - Change: Support security group selection when creating OpenStack machines
+ - Change: Revamp check_size implementation (EE/HS only)
+
+## v4.5.3 (10 Jun 2021)
+
+  - Bugfix: Declare dramatiq broker on every actor
+  - Bugfix: Get cached_machines before creating the machine, closes(#120)
+  - Bugfix: Fix schedule editing
+  - Bugfix: Fix bug when size disk is absent for check_size (EE/HS only)
+  - Change: Update snapshots dialog for vSphere machines
+  - Change: Add more tests on constraints (EE/HS only)
+
+## v4.5.2 (1 Jun 2021)
+
+  - Bugfix: Fix constraints field & expiration output
+  - Change: Don't update creation time on reboot for Azure machines
+  - Change: Add constraints tests (EE/HS only)
+  - Change: Improve apiv2 create machine spec
+  
+## v4.5.1 (26 May 2021)
+
+ - Bugfix: Fix DNS hostname on provisioning
+ - Change: Improve list_images performance on vSphere/vCenter clouds
+ - Change: Add human friendly name to custom sizes (EE/HS only)
+ - Change: Run update_mappings task on Dramatiq runner (EE/HS only)
+
+## v4.5.0 (20 May 2021)
+
+ - Feature: Add read-only objectstorage support for AWS & OpenStack clouds
+ - Feature: Extend size & field constraints, enabling owners to configure available create-machine form fields & sizes (EE/HS only)
+ - Feature: Web UI for configuring constraints (EE/HS only)
+ - Feature: Helm chart
+ - Change: Support Ansible 2.0, run playbooks in runner container
+ - Change: Do not require password when creating API token, notify user by email
+ - Change: Upgrade RabbitMQ, remove Memcached
+ - Change: Make portal name configurable in email subjects & bodies
+
+## v4.4.5 (25 Apr 2021)
+
+ - Bugfix: Fix post-deploy ssh login
+ - Bugfix: Use num of cpu cores in Equnix CloudSize object
+ - Bugfix: Allow monitoring API calls on terminated machines
+ - Bugfix: Update RBAC mappings after adding machine in KVM/Other cloud (EE/HS only)
+ - Bugfix: Fix excessive log filtering for non owners (EE/HS only)
+ - Change: Use double quotes for exact match & support math operators in APIv2 calls
+
+## v4.4.4 (14 Apr 2021)
+
+ - Bugfix: Fix validation error when adding new host in KVM clouds
+ - Bugfix: Remember custom sort order & field widths in lists
+ - Bugfix: Always fetch permissions & constraints in machine-create form
+ - Bugfix: Prevent occasional exceptions when listing images in vSphere
+ - Change: Dont use asyncio by default when listing vSphere nodes
+
+## v4.4.3 (1 Apr 2021)
+
+ - Change: Add support for CI Logon SSO (EE only)
+ - Change: Upgrade echarts & load them only when needed
+ - Change: Add new DB indexes on Images & Sizes to increase query performance
+ - Bugfix: Allow image formats other than .img when cloning KVM machine
+ 
+## v4.4.2 (18 Mar 2021)
+
+ - Bugfix: Fix UI RBAC checking issue (EE/HS only)
+ - Bugfix: Fix LDAP URI stripping issue (EE/HS only)
+ - Change: Allow LDAP login from multiple OU's (EE/HS only)
+ - Change: Update pre-starred AWS & Azure images
+
+## v4.4.1 (4 Mar 2021)
+
+ - Bugfix: Pin influxdb image to v1.8.4
+ - Bugfix: Fix display of tags with empty value
+ - Bugfix: Fix constraint enforcement on create machine form (EE/HS only)
+ - Bugfix: Do not display sign in disabled message when MS365 SSO is the only one available (EE only)
+ - Change: Update requests & limits in helm chart
+
+## v4.4.0 (19 Feb 2021)
 
  - Change: Upgrade to Polymer3 / Web Components v1
+ - Feature: Add support for CloudSigma clouds
+ - Feature: Use Monaco editor when viewing or editing code or markup
  - Feature: Add RBAC on images (EE/HS only)
- - Feature: Add power_cycle action for DigitalOcean
+ - Feature: Add support for Microsoft 365 sign on (EE only)
+ - Feature: Hide sidebar sections when the user has no permission to access them (EE/HS only)
+ - Feature: Add power\_cycle action for DigitalOcean
  - Feature: Extend supported constraints on machine size
  - Feature: Add rename & clone actions for vSphere machines
  - Feature: Introduce API v2 (experimental)
  - Feature: Add support for volumes in Linode
+ - Change: Open shell in new window, rewrite ssh backend in Golang
  - Change: Support Linode API v4
  - Change: Rename Packet to EquinixMetal
  - Change: Drop experimental support for Gig G8 clouds

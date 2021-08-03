@@ -44,9 +44,9 @@ discover submodules:
 
 .dind_template: &docker_template
   stage: build
-  image: docker:18.09-git
+  image: docker:18.09.7-git
   services:
-    - docker:dind
+    - docker:18.09.7-dind
   variables: &docker_variables
     DOCKER_DRIVER: overlay2
     DOCKER_HOST: tcp://localhost:2375/
@@ -183,6 +183,8 @@ build nginx: *docker_build_template
 build gocky: *docker_build_template
 build logstash: *docker_build_template
 build elasticsearch-manage: *docker_build_template
+build huproxy: *docker_build_template
+build wsproxy: *docker_build_template
 
 
 .docker_retag_template: &docker_retag_template
@@ -201,7 +203,6 @@ build elasticsearch-manage: *docker_build_template
 retag landing: *docker_retag_template
 retag ui: *docker_retag_template
 retag tests: *docker_retag_template
-retag tsfdb: *docker_retag_template
 
 
 compose:
@@ -227,10 +228,21 @@ compose:
 
 .deploy_template: &deploy_template
   stage: deploy
-  image: dtzar/helm-kubectl:3.4.0
+  image: mist/helm-automation
   before_script:
     - |
         set -e
+
+        function set_chart_version() {
+          if [ -n "$CI_COMMIT_TAG" ]; then
+            CHART_VERSION=${CI_COMMIT_TAG:1}
+          else
+            CHART_VERSION=0.0.0
+          fi
+          export CHART_VERSION
+          envsubst < ./chart/mist/Chart.yaml > /tmp/Chart.yaml
+          mv /tmp/Chart.yaml ./chart/mist/Chart.yaml
+        }
 
         function set_if_not_empty() {
           key="$1"
@@ -296,8 +308,11 @@ compose:
             rm -rf $tls_tmpdir
           fi
 
+          set_chart_version
+
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo add mist-charts https://mist-charts.storage.googleapis.com/
+          helm repo add vm https://victoriametrics.github.io/helm-charts/
           helm repo update
           helm dependency update ./chart/mist/
 
@@ -306,7 +321,6 @@ compose:
             -f values.yaml \
             --set image.tag="$CI_COMMIT_SHA" \
             --set image.registry="$REGISTRY_IMAGE" \
-            --set image.pullPolicy=IfNotPresent \
             --set image.secrets[0].name="$image_secret_name" \
             --set http.host="$host" \
             --set stripe.publicApiKey="$STRIPE_PUBLIC_APIKEY" \
@@ -530,6 +544,7 @@ MP:lxd-machine-create: *multiprovisioning_test_template
 # MP:openstack-machine-create: *multiprovisioning_test_template
 MP:equinix-metal-machine-create: *multiprovisioning_test_template
 MP:rackspace-machine-create: *multiprovisioning_test_template
+MP:cloudsigma-machine-create: *multiprovisioning_test_template
 
 # Machine Provisioning tests #
 VP:aliyun-volume-create: *multiprovisioning_test_template
@@ -537,6 +552,7 @@ VP:azure-volume-create: *multiprovisioning_test_template
 VP:digital-ocean-volume-create: *multiprovisioning_test_template
 VP:ec2-volume-create: *multiprovisioning_test_template
 VP:gce-volume-create: *multiprovisioning_test_template
+VP:cloudsigma-volume-create: *multiprovisioning_test_template
 # VP:openstack-volume-create: *multiprovisioning_test_template
 #################### UNDEPLOY STAGE ####################
 
@@ -578,7 +594,7 @@ undeploy review:
 release: &release_template
   when: manual
   stage: release
-  image: python:2.7-alpine
+  image: python:3.8-alpine
   before_script:
     - apk add --update libmagic openssl
     - pip install requests python-magic
@@ -617,6 +633,11 @@ helm_chart_release:
   script:
     - |
         #! /usr/bin/env bash
+
+        export CHART_VERSION=${CI_COMMIT_TAG:1}
+        echo "CHART_VERSION=$CHART_VERSION"
+        envsubst < ./chart/mist/Chart.yaml > /tmp/Chart.yaml
+        mv /tmp/Chart.yaml ./chart/mist/Chart.yaml
 
         gcloud auth activate-service-account --key-file=$GCLOUD_SERVICE_KEY
         set -o errexit
@@ -695,6 +716,8 @@ helm_chart_release:
   only:
     # only for references that match a version string (v1.2.3)
     - /^v\d+\.\d+\.\d+$/
+    # only for references that match a prelease version string (v1.2.3-beta)
+    - /^v\d+\.\d+\.\d+-.+$/
   dependencies: []
   except:
     # Except branches, meaning it'll only apply to git tags
