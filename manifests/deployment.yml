@@ -1,0 +1,19 @@
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: "aks1-27ae"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: "aks1-27ae"
+  template:
+    metadata:
+      labels:
+        app: "aks1-27ae"
+    spec:
+      containers:
+        - name: "aks1-27ae"
+          image: "imageresistry1.azurecr.io/aks1"
+          ports:
+          - containerPort: 80
