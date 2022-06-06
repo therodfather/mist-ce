@@ -13,7 +13,7 @@ services:
       - mongodb:/data/db:rw
 
   rabbitmq:
-    image: rabbitmq:3.8.16-management
+    image: mist/rabbitmq
     restart: on-failure:5
 
   memcached:
@@ -21,10 +21,12 @@ services:
     restart: on-failure:5
 
   elasticsearch:
-    image: elasticsearch:5.6.10
+    image: elasticsearch:5.6.16
     restart: on-failure:5
     volumes:
       - elasticsearch:/usr/share/elasticsearch/data:rw
+    environment:
+      ES_JAVA_OPTS: "-Dlog4j2.formatMsgNoLookups=true"
 
   logstash:
     image: $IMG_REGISTRY/logstash:$IMG_TAG
@@ -65,21 +67,32 @@ services:
       API_URL: /api/v1/spec
     restart: on-failure:5
 
-
-  scheduler: &backend
+  apply-migrations: &boot
     image: $IMG_REGISTRY/api:$IMG_TAG
     depends_on:
       - mongodb
       - elasticsearch
       - rabbitmq
+      - vault-init
     volumes:
       - ./settings:$CONF_DIR/settings
+      - approle:/approle
     environment:
       SETTINGS_FILE: $CONF_DIR/settings/settings.py
     stdin_open: true
     tty: true
     restart: on-failure:5
+    command: bin/wait-all bin/migrate
+
+  scheduler: &backend
+    <<: *boot
+    depends_on:
+      - apply-migrations
     command: bin/wait-all bin/scheduler
+
+  hubshell:
+    <<: *backend
+    command: bin/wait-all bin/hubshell
 
   api:
     <<: *backend
@@ -89,7 +102,7 @@ services:
 
   api-v2:
     <<: *backend
-    command: uwsgi --http 0.0.0.0:8080 --wsgi-file v2/mist_api_v2/__main__.py --callable application --master --processes 8 --max-requests 100 --honour-stdin
+    command: uwsgi --http 0.0.0.0:8080 --wsgi-file v2/mist_api_v2/__main__.py --callable application --master --processes 8 --max-requests 100 --honour-stdin --enable-threads
     expose:
       - 8080
 
@@ -98,10 +111,6 @@ services:
     command: bin/wait-all bin/sockjs
     expose:
       - 8081
-
-  apply-migrations:
-    <<: *backend
-    command: bin/wait-all bin/migrate
 
   dramatiq:
     <<: *backend
@@ -135,6 +144,36 @@ services:
       - sockjs
       - landing
       - ui
+
+  vminsert:
+    image: victoriametrics/vminsert:v1.60.0-cluster
+    command:
+      - '--influxTrimTimestamp=1s'
+      - '--storageNode=vmstorage:8400'
+    ports:
+      - 8480
+
+  vmstorage:
+    image: victoriametrics/vmstorage:v1.60.0-cluster
+    command:
+      - '--retentionPeriod=12'
+      - '--storageDataPath=/var/lib/victoria-metrics-data'
+    ports:
+      - 8400
+      - 8401
+      - 8482
+    volumes:
+      - victoria-metrics:/var/lib/victoria-metrics-data
+
+  vmselect:
+    image: victoriametrics/vmselect:v1.60.0-cluster
+    command:
+      - '--search.latencyOffset=0s'
+      - '--search.cacheTimestampOffset=15m'
+      - '--storageNode=vmstorage:8401'
+      - '--search.maxQueryLen=1GiB'
+    ports:
+      - 8481
 
   influxdb:
     image: influxdb:1.8.4
@@ -173,8 +212,8 @@ services:
       - 8040:80
       - 8041:8080
 
-  huproxy:
-    image: $IMG_REGISTRY/huproxy:$IMG_TAG
+  sheller:
+    image: $IMG_REGISTRY/sheller:$IMG_TAG
     command: /app --listen 0.0.0.0:8086
     environment:
       MONGO_URI: mongodb://mongodb:27017
@@ -186,10 +225,40 @@ services:
     expose:
       - 8764
 
+  vault:
+    image: $IMG_REGISTRY/vault:$IMG_TAG
+    expose:
+      - "8200"
+    restart: on-failure:5
+    volumes:
+      - vault-data:/vault/data:rw
+      - vault-config:/vault/config:rw
+    cap_add:
+      - IPC_LOCK
+    entrypoint: /vault-start.sh
 
+  vault-init:
+    depends_on:
+      - vault
+    image: $IMG_REGISTRY/vault:$IMG_TAG
+    volumes:
+      - vault-config:/vault/config:rw
+      - vault-policies:/vault/policies:rw
+      - approle:/approle
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        /bin/wait-for vault:8200
+        /init/vault-init.sh sh /etc/init.d/vault-play.sh
+    environment:
+      - VAULT_ADDR=http://vault:8200
 
 volumes:
   elasticsearch: {}
   influxdb: {}
   mongodb: {}
   victoria-metrics: {}
+  vault-data: {}
+  vault-config: {}
+  vault-policies: {}
+  approle: {}

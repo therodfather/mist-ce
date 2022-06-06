@@ -29,6 +29,17 @@ smtp:
   tls: false
   starttls: false
 
+# Vault settings. Change this to use a remote Vault server.
+vault:
+  address: 'http://vault:8200'
+  token: ''
+  roleId: ''
+  secretId: ''
+  secret_engine_paths: {}
+  kv_version: 2
+  clouds_path: 'mist/clouds/'
+  keys_path: 'mist/keys'
+
 # Elasticsearch settings. Change this to use a remote elasticsearch cluster.
 elasticsearch:
   host: ''
@@ -60,10 +71,11 @@ victoriametrics:
       search.latencyOffset: 0s
       # Don't cache the last 15m because they may be backfilled by telegraf
       search.cacheTimestampOffset: 15m
+      search.maxQueryLen: 1GiB
     resources:
       limits:
-        cpu: 50m
-        memory: 64Mi
+        cpu: 1
+        memory: 640Mi
       requests:
         cpu: 50m
         memory: 64Mi
@@ -74,8 +86,8 @@ victoriametrics:
     replicaCount: 1
     resources:
       limits:
-        cpu: 50m
-        memory: 64Mi
+        cpu: 1
+        memory: 640Mi
       requests:
         cpu: 50m
         memory: 64Mi
@@ -84,8 +96,8 @@ victoriametrics:
     retentionPeriod: 12
     resources:
       limits:
-        cpu: 500m
-        memory: 512Mi
+        cpu: 1
+        memory: 640Mi
       requests:
         cpu: 250m
         memory: 256Mi
@@ -108,19 +120,22 @@ rabbitmq:
     forceBoot: true
   resources:
     requests:
-      memory: 250Mi
+      memory: 350Mi
       cpu: 1000m
     limits:
-      memory: 500Mi
+      memory: 1500Mi
       cpu: 2000m
   service:
     clusterIP: ''
   nodeSelector: {}
-  updateStrategy: RollingUpdate
+  updateStrategy:
+    type: RollingUpdate
   extraConfiguration: |-
     tcp_listen_options.keepalive = true
     cluster_formation.node_cleanup.only_log_warning = true
     load_definitions = /app/load_definition.json
+    prometheus.return_per_object_metrics = true
+    consumer_timeout = 3600000
   loadDefinition:
     enabled: true
     existingSecret: |-
@@ -146,14 +161,21 @@ mongodb:
 memcached:
   host: ''
 
-# Docker settings (used by orchestration plugin). This has to be configured for
-# orchestration to work.
+# Docker settings (used by orchestration plugin).
+# Either an external dockerhost or the deploy option must be set
+# for orchestration to work.
 docker:
-  host: api
+  # Deploy an insecure dockerhost pod in-cluster. This option will deploy a privileged
+  # pod, make sure your cluster's podsecuritypolicies allow running privileged pods.
+  # deploy will only be evaluated if docker.host is not configured.
+  deploy: true
+  # External dockerhost settings
+  host: ''
   port: 2375
   key: ''
   cert: ''
   ca: ''
+
 
 # Monitoring settings.
 monitoring:
@@ -174,7 +196,7 @@ internalKeys:
 # Authentication configuration.
 auth:
   email:
-    signup: true
+    signup: false
     signin: true
   google:
     signup: false
@@ -188,6 +210,7 @@ backup:
   key: ''
   secret: ''
   bucket: ''
+  region: ''
   gpg:
     recipient: ''
     public: ''
@@ -217,6 +240,12 @@ extraSettings: ''
 # Node selector will be applied to all pods for all deployments, excluding
 # subcharts.
 nodeSelector: {}
+
+sentry:
+  api: ''
+  apiv2: ''
+  dramatiq: ''
+  sockjs: ''
 
 preemptible:
   tolerations:
@@ -294,15 +323,273 @@ deployment:
 
   # Dramatiq deployment settings.
   dramatiq:
-    replicas: 1
-    autoscaling: *autoscaling
-    resources:
-      requests:
-        memory: 200Mi
-        cpu: 20m
-      limits:
-        memory: 800Mi
-        cpu: 1000m
+    dramatiq:
+      enabled: true
+      replicas: 2
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 1170Mi
+          cpu: 250m
+        limits:
+          memory: 1700Mi
+          cpu: 2000m
+      processes: "2"
+      threads: "8"
+      queues:
+        - default
+        - dramatiq_mappings
+        - dramatiq_scripts
+        - dramatiq_provisioning
+        - dramatiq_schedules
+        - dramatiq_sessions
+        - dramatiq_ping_probe
+        - dramatiq_ssh_probe
+        - dramatiq_rules
+        - dramatiq_polling
+        - dramatiq_machines
+        - dramatiq_clusters
+        - dramatiq_networks
+        - dramatiq_zones
+        - dramatiq_volumes
+        - dramatiq_buckets
+
+    # Queue-specific runners. Off by default.
+    default:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 200m
+        limits:
+          memory: 1700Mi
+          cpu: 2000m
+      processes: "2"
+      threads: "8"
+      queues:
+        - default
+    provisioning:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 1500m
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_provisioning
+    polling:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 20m
+        limits:
+          memory: 1700Mi
+          cpu: 2000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_polling
+    machines:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 20m
+        limits:
+          memory: 1700Mi
+          cpu: 2000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_machines
+    clusters:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 2000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_clusters
+    networks:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 20m
+        limits:
+          memory: 1700Mi
+          cpu: 2000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_networks
+    zones:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 2000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_zones
+    volumes:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 20m
+        limits:
+          memory: 1700Mi
+          cpu: 2000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_volumes
+    buckets:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 500Mi
+          cpu: 20m
+        limits:
+          memory: 1700Mi
+          cpu: 2000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_buckets
+    mappings:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 2000m
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_mappings
+        - dramatiq_sessions
+    scripts:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 1000Mi
+          cpu: 2000m
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_scripts
+    probe:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 1000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_ssh_probe
+    ping:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 1000m
+      preemptible: true
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_ping_probe
+    rules:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 1000m
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_rules
+    schedules:
+      enabled: false
+      replicas: 1
+      autoscaling: *autoscaling
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 20m
+        limits:
+          memory: 800Mi
+          cpu: 1000m
+      processes: "2"
+      threads: "8"
+      queues:
+        - dramatiq_schedules
 
   # Sockjs deployment settings.
   sockjs:
@@ -313,7 +600,7 @@ deployment:
         memory: 100Mi
         cpu: 15m
       limits:
-        memory: 300Mi
+        memory: 800Mi
         cpu: 1200m
 
   # UI deployment settings.
@@ -351,3 +638,87 @@ deployment:
       limits:
         memory: 250Mi
         cpu: 200m
+
+  # APScheduler deployment settings
+  scheduler:
+    scheduler:
+      enabled: true
+      replicas: 1
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 100m
+        limits:
+          memory: 1000Mi
+          cpu: 1000m
+      schedules:
+        - builtin
+        - user
+        - polling
+        - rules
+    builtin:
+      enabled: false
+      replicas: 1
+      resources:
+        requests:
+          memory: 100Mi
+          cpu: 10m
+        limits:
+          memory: 400Mi
+          cpu: 1000m
+      schedules:
+        - builtin
+    user:
+      enabled: false
+      replicas: 1
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 10m
+        limits:
+          memory: 1000Mi
+          cpu: 1000m
+      schedules:
+        - user
+    polling:
+      enabled: false
+      replicas: 1
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 10m
+        limits:
+          memory: 1000Mi
+          cpu: 1000m
+      schedules:
+        - polling 
+    rules:
+      enabled: false
+      replicas: 1
+      resources:
+        requests:
+          memory: 200Mi
+          cpu: 10m
+        limits:
+          memory: 1000Mi
+          cpu: 1000m
+      schedules:
+        - rules
+
+
+# NOTE: The following settings only take effect on chart installation 
+# and not on any subsequent chart upgrades.
+# User auto-creation settings. If `enabled` is set to true a new
+# user will be created with the specified email,password and api token.
+# An Organization will also be created with the user as the only owner.
+portalAdmin:
+  enabled: true
+  organization: "example.com"
+  mail: "admin@example.com"
+  # If password is left empty, one will be autogenerated and instructions
+  # to access it will be printed after Helm installation.
+  password: ""
+  # Generate an API token for the user. Instructions to access the 
+  # generated API token will be printed after Helm installation.
+  createApiToken: true
+

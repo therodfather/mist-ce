@@ -25,7 +25,7 @@ stages:
 
 discover submodules:
   stage: discover
-  image: alpine:3.8
+  image: alpine:3.9
   retry: 1  # sometimes gitlab api returns 500
   before_script:
     - apk add --no-cache git
@@ -160,6 +160,11 @@ discover submodules:
 build api:
   <<: *docker_template
   script:
+    - |
+        for submodule in orchestration; do
+          git submodule sync $submodule
+          git submodule update --init $submodule
+        done
     - SRC_IMG="${SUBMODULES_IMAGE:-mist}/mist:$(get_submodule_sha api)"
     - docker_pull $SRC_IMG
     - |
@@ -170,6 +175,20 @@ build api:
           --build-arg MIST_VERSION_NAME=$CI_COMMIT_REF_NAME \
           .
     - docker_push $CI_PROJECT_NAME/api:$CI_COMMIT_SHA api
+
+build tests:
+  <<: *docker_template
+  script:
+    - git submodule sync --recursive api
+    - git submodule update --init --recursive api
+    - export SRC_IMG="${SUBMODULES_IMAGE:-mist}/tests:$(get_submodule_sha tests)"
+    - export IMG=$(echo "$CI_JOB_NAME" | cut -d " " -f2)
+    - |
+        docker build \
+          -t $CI_PROJECT_NAME/$IMG:$CI_COMMIT_SHA \
+          --build-arg SRC_IMG=$SRC_IMG \
+          -f docker/tests/Dockerfile .
+    - docker_push $CI_PROJECT_NAME/$IMG:$CI_COMMIT_SHA $IMG
 
 .docker_build_template: &docker_build_template
   <<: *docker_template
@@ -183,8 +202,9 @@ build nginx: *docker_build_template
 build gocky: *docker_build_template
 build logstash: *docker_build_template
 build elasticsearch-manage: *docker_build_template
-build huproxy: *docker_build_template
+build sheller: *docker_build_template
 build wsproxy: *docker_build_template
+build vault: *docker_build_template
 
 
 .docker_retag_template: &docker_retag_template
@@ -202,7 +222,6 @@ build wsproxy: *docker_build_template
 
 retag landing: *docker_retag_template
 retag ui: *docker_retag_template
-retag tests: *docker_retag_template
 
 
 compose:
@@ -240,8 +259,7 @@ compose:
             CHART_VERSION=0.0.0
           fi
           export CHART_VERSION
-          envsubst < ./chart/mist/Chart.yaml > /tmp/Chart.yaml
-          mv /tmp/Chart.yaml ./chart/mist/Chart.yaml
+          sed -i "s/0.0.0/$CHART_VERSION/g" ./chart/mist/Chart.yaml
         }
 
         function set_if_not_empty() {
@@ -323,15 +341,17 @@ compose:
             --set image.registry="$REGISTRY_IMAGE" \
             --set image.secrets[0].name="$image_secret_name" \
             --set http.host="$host" \
+            --set vault.address="$VAULT_ADDR" \
+            --set vault.token="$VAULT_TOKEN" \
             --set stripe.publicApiKey="$STRIPE_PUBLIC_APIKEY" \
             --set stripe.secretApiKey="$STRIPE_SECRET_APIKEY" \
-            --set docker.host="$DOCKER_HOST" \
-            --set docker.port="$DOCKER_PORT" \
-            --set docker.key="$DOCKER_KEY" \
-            --set docker.cert="$DOCKER_CERT" \
-            --set docker.ca="$DOCKER_CA" \
+            --set portalAdmin.enabled=false \
+            --set auth.email.signup=true \
             --set awsAccessKey="$AWS_ACCESS_KEY" \
             --set awsSecretKey="$AWS_SECRET_KEY" \
+            --set victoriametrics.vminsert.fullnameOverride="$release-vminsert" \
+            --set victoriametrics.vmstorage.fullnameOverride="$release-vmstorage" \
+            --set victoriametrics.vmselect.fullnameOverride="$release-vmselect" \
             $tls_settings \
             $(elasticsearch_params) \
             $release ./chart/mist/
@@ -344,6 +364,17 @@ compose:
             sleep 5 && echo 'Environment not ready yet...'
           done
           echo "Environment ready at $CI_ENVIRONMENT_URL"
+          if [ $(curl -LI $VAULT_ADDR/v1/sys/sealed -o /dev/null -w '%{http_code}\n' -s) = 503 ]; then
+            echo "Vault is sealed"
+            curl --request POST -d "{\"key\":\"$VAULT_UNSEAL_1\"}" $VAULT_ADDR/v1/sys/unseal
+            curl --request POST -d "{\"key\":\"$VAULT_UNSEAL_2\"}" $VAULT_ADDR/v1/sys/unseal
+            curl --request POST -d "{\"key\":\"$VAULT_UNSEAL_3\"}" $VAULT_ADDR/v1/sys/unseal
+            if [ $(curl -LI $VAULT_ADDR/v1/sys/sealed -o /dev/null -w '%{http_code}\n' -s) == 503 ]; then
+              echo "Failed to unseal"
+            else
+              echo "Unsealed"
+            fi
+          fi
         }
   script:
     - echo "$values" > values.yaml
@@ -369,6 +400,11 @@ deploy test:
           certmanager.k8s.io/acme-challenge-type: dns01
           certmanager.k8s.io/acme-dns01-provider: mist-dns
       enableDevUsers: true
+      sentry:
+        api: $SENTRY_API
+        apiv2: $SENTRY_API_V2
+        dramatiq: $SENTRY_DRAMATIQ
+        sockjs: $SENTRY_SOCKJS
       #jsBuild: false
 
 .deploy_review_template: &deploy_review_template
@@ -392,6 +428,11 @@ deploy test:
         starttls: true
         username: apikey
         password: $SENDGRID_PASSWORD
+      sentry:
+        api: $SENTRY_API
+        apiv2: $SENTRY_API_V2
+        dramatiq: $SENTRY_DRAMATIQ
+        sockjs: $SENTRY_SOCKJS
 
 deploy review:
   <<: *deploy_review_template
@@ -426,7 +467,7 @@ deploy master:
     EMAIL: thingirl.tester.mist.io+${CI_JOB_ID}@gmail.com
     IMAP_HOST: test-$CI_PROJECT_NAME-$CI_COMMIT_REF_SLUG-mailmock.test-$CI_PROJECT_NAME.svc.cluster.local
   before_script:
-    - 'export TEST=$(echo "$CI_JOB_NAME" | cut -d/ -f1 | cut -d: -f2,3 | tr : /)'
+    - 'export TEST=$(echo "$CI_JOB_NAME" | cut -d/ -f1 | cut -d: -f2-4 | tr : /)'
     - echo "Test argument is $TEST"
     - echo "Image used is $TESTS_IMAGE"
     - echo $TEST_SETTINGS | base64 -d > test_settings.py
@@ -439,6 +480,12 @@ deploy master:
   script:
     - /mist.tests/prepare_env.py --api -s /mist.tests/misttests/integration/api/$TEST.py
 
+.api_test_template_manual: &api_test_template_manual
+  <<: *test_template
+  script:
+    - /mist.tests/prepare_env.py --api -s /mist.tests/misttests/integration/api/$TEST.py
+  when: manual
+
 API:main:api_token: *api_test_template
 API:main:clouds: *api_test_template
 API:main:dns: *api_test_template
@@ -450,11 +497,29 @@ API:main:machines: *api_test_template
 API:main:networks: *api_test_template
 API:main:schedules: *api_test_template
 API:main:scripts: *api_test_template
+API:main:secrets: *api_test_template
 API:main:teams: *api_test_template
 API:main:ip_whitelisting: *api_test_template
 API:main:volumes: *api_test_template
+API:main:v2:test_clouds_controller: *api_test_template
+API:main:v2:test_clusters_controller: *api_test_template_manual
+API:main:v2:test_datapoints_controller: *api_test_template
+API:main:v2:test_images_controller: *api_test_template
+API:main:v2:test_jobs_controller: *api_test_template
+API:main:v2:test_keys_controller: *api_test_template
+API:main:v2:test_locations_controller: *api_test_template
+API:main:v2:test_networks_controller: *api_test_template
+API:main:v2:test_rules_controller: *api_test_template
+API:main:v2:test_orgs_controller: *api_test_template
+API:main:v2:test_scripts_controller: *api_test_template
+API:main:v2:test_sizes_controller: *api_test_template
+API:main:v2:test_users_controller: *api_test_template
+API:main:v2:test_volumes_controller: *api_test_template
+API:main:v2:test_zones_controller: *api_test_template
+API:main:v2:test_snapshots_controller: *api_test_template
+API:main:v2:test_machines_controller: *api_test_template
 
-.API:plugin:orchestration: *api_test_template
+API:plugin:orchestration: *api_test_template
 .API:plugin:tunnels: *api_test_template
 
 
@@ -501,6 +566,7 @@ UI:schedulers-1/2:
 UI:schedulers-2/2:
   <<: *ui_test_template
   retry: 1
+UI:schedulers-script: *ui_test_template
 UI:ip-whitelisting:
   <<: *ui_test_template
   only:
@@ -510,7 +576,7 @@ UI:ip-whitelisting:
 .UI:rbac-2/4: *ui_test_template
 .UI:rbac-3/4: *ui_test_template
 .UI:rbac-4/4: *ui_test_template
-.UI:orchestration: *ui_test_template
+UI:orchestration: *ui_test_template
 .UI:insights:
   <<: *ui_test_template
   retry: 1
@@ -636,8 +702,7 @@ helm_chart_release:
 
         export CHART_VERSION=${CI_COMMIT_TAG:1}
         echo "CHART_VERSION=$CHART_VERSION"
-        envsubst < ./chart/mist/Chart.yaml > /tmp/Chart.yaml
-        mv /tmp/Chart.yaml ./chart/mist/Chart.yaml
+        sed -i "s/0.0.0/$CHART_VERSION/g" ./chart/mist/Chart.yaml
 
         gcloud auth activate-service-account --key-file=$GCLOUD_SERVICE_KEY
         set -o errexit

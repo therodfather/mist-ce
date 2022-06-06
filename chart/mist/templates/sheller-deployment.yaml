@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "chart.fullname" . }}-huproxy
+  name: {{ include "chart.fullname" . }}-sheller
   labels:
-    app: huproxy
+    app: sheller
     chart: {{ include "chart.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
@@ -15,27 +15,18 @@ spec:
   template:
     metadata:
       labels:
-        app: huproxy
+        app: sheller
         release: {{ .Release.Name }}
     spec:
       imagePullSecrets:
 {{ toYaml .Values.image.secrets | indent 8 }}
       containers:
-      - name: huproxy
+      - name: sheller
         args:
         - /app
         - --listen
         - 0.0.0.0:8086
-        env:
-        - name: MONGO_URI
-        {{- if .Values.mongodb.deploy }}
-          value: {{ .Release.Name }}-mongodb:27017
-        {{- else }}
-          value: {{ .Values.mongodb.host }}{{ if .Values.mongodb.port }}:{{ .Values.mongodb.port }}{{ end }}
-        {{- end }}
-        - name: SECRET
-          value: {{ .Values.internalKeys.secret }}
-        image: {{ .Values.image.registry }}/huproxy:{{ .Values.image.tag }}
+        image: {{ .Values.image.registry }}/sheller:{{.Values.image.tag }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         resources:
           limits:
@@ -44,6 +35,19 @@ spec:
           requests:
             memory: 20Mi
             cpu: 1m
+        env:
+          - name: INTERNAL_KEYS_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "chart.fullname" . }}-internal-keys-secret
+                key: secret
+                optional: false
+          - name: INTERNAL_KEYS_SIGN
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "chart.fullname" . }}-internal-keys-secret
+                key: sign
+                optional: false
 {{- if .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml .Values.nodeSelector | indent 8 }}

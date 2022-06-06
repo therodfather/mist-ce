@@ -37,6 +37,7 @@ spec:
         - --processes=8
         - --max-requests=100
         - --honour-stdin
+        - --enable-threads
         resources:
           requests:
             memory: {{ .Values.deployment.api.resources.requests.memory | default "100Mi" }}
@@ -48,6 +49,25 @@ spec:
         - name: {{ .Values.productShortName }}-config
           mountPath: /etc/{{ .Values.productShortName }}/settings/settings.py
           subPath: settings.py
+        env:
+          - name: INTERNAL_KEYS_CILIA
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "chart.fullname" . }}-internal-keys-secret
+                key: cilia
+                optional: false
+          - name: INTERNAL_KEYS_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "chart.fullname" . }}-internal-keys-secret
+                key: secret
+                optional: false
+          - name: INTERNAL_KEYS_SIGN
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "chart.fullname" . }}-internal-keys-secret
+                key: sign
+                optional: false
       volumes:
       - name: {{ .Values.productShortName }}-config
         configMap:

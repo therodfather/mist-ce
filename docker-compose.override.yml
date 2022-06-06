@@ -14,6 +14,10 @@ services:
     ports:
       - 9200:9200
 
+  vault:
+    ports:
+      - 8200:8200
+
   logstash:
     volumes:
       - ./docker/logstash/config:/config-dir:rw
@@ -36,6 +40,9 @@ services:
       - ./defaults.py:$CONF_DIR/defaults.py:ro
       - ./api:/mist.api:rw
       - ./keys:/keys
+      - ./orchestration:/opt/orchestration:rw
+
+  hubshell: *backend
   api: *backend
   api-v2: *backend
   sockjs: *backend
@@ -81,6 +88,7 @@ services:
       - '--search.latencyOffset=0s'
       - '--search.cacheTimestampOffset=15m'
       - '--storageNode=vmstorage:8401'
+      - '--search.maxQueryLen=1GiB'
     ports:
       - 8481
 

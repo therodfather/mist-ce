@@ -52,11 +52,11 @@ data:
 
     {{ if .Values.victoriametrics.enabled -}}
     {{ if .Values.victoriametrics.deploy -}}
-    VICTORIAMETRICS_URI = "http://{{ .Release.Name }}-victoriametrics-vmselect.{{ .Release.Namespace }}.svc.cluster.local:8481/select/<org_id>/prometheus"
-    VICTORIAMETRICS_WRITE_URI = "http://{{ .Release.Name }}-victoriametrics-vminsert.{{ .Release.Namespace }}.svc.cluster.local:8480/insert/<org_id>/prometheus/api/v1/import/prometheus"
+    VICTORIAMETRICS_URI = "http://{{ .Release.Name }}-vmselect.{{ .Release.Namespace }}.svc.cluster.local:8481/select/<org_id>/prometheus"
+    VICTORIAMETRICS_WRITE_URI = "http://{{ .Release.Name }}-vminsert.{{ .Release.Namespace }}.svc.cluster.local:8480/insert/<org_id>/prometheus"
     {{- else -}}
     VICTORIAMETRICS_URI = "{{ .Values.victoriametrics.readEndpoint }}/select/<org_id>/prometheus"
-    VICTORIAMETRICS_WRITE_URI = "{{ .Values.victoriametrics.writeEndpoint }}/insert/<org_id>/prometheus/api/v1/import/prometheus"
+    VICTORIAMETRICS_WRITE_URI = "{{ .Values.victoriametrics.writeEndpoint }}/insert/<org_id>/prometheus"
     {{- end }}
     {{- else -}}
     VICTORIAMETRICS_URI = ""
@@ -75,6 +75,14 @@ data:
       {{- end }}
     }
 
+    VAULT_ADDR = "{{ .Values.vault.address }}"
+    {{ if .Values.vault.roleId -}}
+    VAULT_ROLE_ID = "{{ .Values.vault.roleId}}"
+    VAULT_SECRET_ID = "{{ .Values.vault.secretId}}"
+    {{- else -}}
+    VAULT_TOKEN = "{{ .Values.vault.token }}"
+    {{- end }}
+
     STRIPE_SECRET_APIKEY = "{{ .Values.stripe.secretApiKey }}"
     STRIPE_PUBLIC_APIKEY = "{{ .Values.stripe.publicApiKey }}"
 
@@ -89,11 +97,20 @@ data:
     {{- if .Values.memcached.host }}
     MEMCACHED_HOST = ["{{ .Values.memcached.host }}"]
     {{- else }}
-    MEMCACHED_HOST = ["{{ .Release.Name }}-memcached:11211"]
+    MEMCACHED_HOST = ["{{ include "chart.fullname" . }}-memcached:11211"]
     {{- end }}
 
+    {{- if .Values.docker.host }}
     DOCKER_IP = "{{ .Values.docker.host }}"
     DOCKER_PORT = "{{ .Values.docker.port }}"
+    {{ else if .Values.docker.deploy }}
+    DOCKER_IP = "{{ include "chart.fullname" . }}-dockerhost"
+    DOCKER_PORT = "2375"  
+    {{- else }}
+    DOCKER_IP = ""
+    DOCKER_PORT = ""
+    {{- end }}
+
     DOCKER_TLS_KEY = """
 {{ .Values.docker.key | indent 4 }}
     """.strip()
@@ -113,10 +130,6 @@ data:
   {{- end }}
 
     GITHUB_BOT_TOKEN = "{{ .Values.githubBotToken }}"
-
-    SIGN_KEY = "{{ .Values.internalKeys.sign }}"
-    SECRET = "{{ .Values.internalKeys.secret }}"
-    CILIA_SECRET_KEY = "{{ .Values.internalKeys.cilia }}"
 
     SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = "{{ .Values.auth.google.key }}"
     SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = "{{ .Values.auth.google.secret }}"
@@ -139,6 +152,8 @@ data:
     SENDGRID_EMAIL_NOTIFICATIONS_KEY = "{{ .Values.sendgridEmailNotificationsKey }}"
 
     INTERNAL_API_URL = "http://{{ include "chart.fullname" . }}-api"
+    INTERNAL_API_V2_URL = "http://{{ include "chart.fullname" . }}-api-v2:8080"
+    INTERNAL_SOCKJS_HOST = "{{ include "chart.fullname" . }}-sockjs-headless"
     UI_TEMPLATE_URL = "http://{{ include "chart.fullname" . }}-ui"
     LANDING_TEMPLATE_URL = "http://{{ include "chart.fullname" . }}-landing"
     TRAEFIK_API = "http://{{ include "chart.fullname" . }}-traefik:8080"
@@ -149,9 +164,18 @@ data:
         "key": "{{ .Values.backup.key }}",
         "secret": "{{ .Values.backup.secret }}",
         "bucket": "{{ .Values.backup.bucket }}",
+        "region": "{{ .Values.backup.region }}",
         "gpg": {
             "recipient": "{{ .Values.backup.gpg.recipient }}",
             "public":  """{{ .Values.backup.gpg.public | indent 4 }}""".strip()
         }
+    }
+    SENTRY_CONFIG = {
+      'TRACES_SAMPLE_RATE': 0.2,
+      'API_V1_URL': "{{ .Values.sentry.api }}",
+      'API_V2_URL': "{{ .Values.sentry.apiv2 }}",
+      'SOCK_JS_URL': "{{ .Values.sentry.sockjs }}",
+      'DRAMATIQ_URL': "{{ .Values.sentry.dramatiq }}",
+      'ENVIRONMENT': "{{ .Release.Name }}",
     }
 {{ .Values.extraSettings | indent 4 }}
