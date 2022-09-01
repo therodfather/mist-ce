@@ -9,7 +9,7 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   settings.py: |
-    CORE_URI = "http{{ if .Values.http.tlsSecret }}s{{end}}://{{ .Values.http.host }}"
+    PORTAL_URI = "http{{ if .Values.http.tlsSecret }}s{{end}}://{{ .Values.http.host }}"
 
     MAILER_SETTINGS = {
       {{- if .Values.smtp.host }}
@@ -75,12 +75,19 @@ data:
       {{- end }}
     }
 
+    {{ if .Values.vault.deploy -}}
+    VAULT_ADDR = "http://{{ .Release.Name }}-vault:8200"
+    VAULT_TOKEN = ""
+    VAULT_ROLE_ID = ""
+    VAULT_SECRET_ID = ""
+    {{- else -}}
     VAULT_ADDR = "{{ .Values.vault.address }}"
     {{ if .Values.vault.roleId -}}
     VAULT_ROLE_ID = "{{ .Values.vault.roleId}}"
     VAULT_SECRET_ID = "{{ .Values.vault.secretId}}"
     {{- else -}}
     VAULT_TOKEN = "{{ .Values.vault.token }}"
+    {{- end }}
     {{- end }}
 
     STRIPE_SECRET_APIKEY = "{{ .Values.stripe.secretApiKey }}"
